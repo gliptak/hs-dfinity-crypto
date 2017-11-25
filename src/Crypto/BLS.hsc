@@ -131,11 +131,12 @@ verifyPop pop (PublicKey pub) =
 
 -- |
 -- Divide a BLS secret key into 'n' shares such that 't' shares can combine to
--- produce a valid signature.
+-- recover a group signature.
 shamir
   :: Int -- ^ 't'
   -> Int -- ^ 'n'
   -> IO Group
+shamir t n | t < 1 || n < t = error "shamir: invalid arguments"
 shamir t n = do
   ptr <- c'dkgNew t
   members <- foldM (step ptr) empty [1..n]
