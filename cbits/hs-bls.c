@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 #define IN(t, x, s, n) \
   bls ## t x[1]; \
@@ -92,11 +93,12 @@ void dkgFree(struct dkg* r) {
   free(r);
 }
 
-char *dkgPublicKeyNew(struct dkg* p) {
-  OUT(PublicKey, p->gpk);
+char *dkgPublicKeyNew(struct dkg* p, int i) {
+  assert(0 <= i && i < p->t);
+  OUT(PublicKey, p->pk + i);
 }
 
-char *dkgSecretShareNew(struct dkg* p, int i) {
+char *dkgSecretShareNewWithId(struct dkg* p, int i) {
   if (!i) {
     fprintf(stderr, "BUG: ID = 0\n");
     exit(1);
@@ -106,6 +108,27 @@ char *dkgSecretShareNew(struct dkg* p, int i) {
   blsSecretKey sh[1];
   blsSecretKeyShare(sh, p->sk, p->t, id);
   OUT(SecretKey, sh);
+}
+
+char *dkgSecretShareNew(struct dkg* p, char* s, int slen) {
+  blsId id[1];
+  blsIdDeserialize(id, s, slen);
+  blsSecretKey sh[1];
+  blsSecretKeyShare(sh, p->sk, p->t, id);
+  OUT(SecretKey, sh);
+}
+
+char *dkgPublicShareNew(void** ptr, int* ptrlen, int t, char *s, int slen) {
+  blsPublicKey *pks = malloc(sizeof(blsPublicKey) * t);
+  for (int i = 0; i < t; i ++) {
+    blsPublicKeyDeserialize(pks + i, ptr[i], ptrlen[i]);
+  }
+  blsPublicKey pk[1];
+  blsId id[1];
+  blsIdDeserialize(id, s, slen);
+  blsPublicKeyShare(pk, pks, t, id);
+  free(pks);
+  OUT(PublicKey, pk);
 }
 
 char *dkgGroupPublicKeyNew(struct dkg* p) {
