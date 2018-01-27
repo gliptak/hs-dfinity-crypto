@@ -157,13 +157,23 @@ void signatureShareFree(struct sigshare *p) {
   free(p);
 }
 
-void signatureShareAdd(struct sigshare *p, int i, char *sig, int siglen) {
+void signatureShareAddWithId(struct sigshare *p, int i, char *sig, int siglen) {
   if (p->i == p->t) {
     fprintf(stderr, "BUG: too many signature shares\n");
     exit(1);
   }
   blsSignatureDeserialize(p->sig + p->i, sig, siglen);
   blsIdSetInt(p->id + p->i, i);
+  p->i++;
+}
+
+void signatureShareAdd(struct sigshare *p, char *id, int idlen, char *sig, int siglen) {
+  if (p->i == p->t) {
+    fprintf(stderr, "BUG: too many signature shares\n");
+    exit(1);
+  }
+  blsSignatureDeserialize(p->sig + p->i, sig, siglen);
+  blsIdDeserialize(p->id + p->i, id, idlen);
   p->i++;
 }
 
@@ -175,4 +185,18 @@ char *recoverSignatureNew(struct sigshare *p) {
   blsSignature sig[1];
   blsSignatureRecover(sig, p->sig, p->id, p->t);
   OUT(Signature, sig);
+}
+
+char *secretKeyAdd(char *s, int slen, char *t, int tlen) {
+  IN(SecretKey, x, s, slen);
+  IN(SecretKey, y, t, tlen);
+  blsSecretKeyAdd(x, y);
+  OUT(SecretKey, x);
+}
+
+char *publicKeyAdd(char *s, int slen, char *t, int tlen) {
+  IN(PublicKey, x, s, slen);
+  IN(PublicKey, y, t, tlen);
+  blsPublicKeyAdd(x, y);
+  OUT(PublicKey, x);
 }

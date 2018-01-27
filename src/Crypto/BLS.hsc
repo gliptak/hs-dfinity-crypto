@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 module Crypto.BLS
   ( SecretKey(..)
   , PublicKey(..)
@@ -14,6 +15,9 @@ module Crypto.BLS
   , verifyPop
   , shamir
   , recover
+  , recoverSig
+  , recoverSecretKey
+  , recoverPublicKey
   , newContribution
   , newPublicKeyShare
   ) where
@@ -52,8 +56,11 @@ import GHC.Generics           (Generic)
 #ccall dkgGroupPublicKeyNew, Ptr Void -> IO CString
 #ccall signatureShareNew, CInt -> IO (Ptr Void)
 #ccall signatureShareFree, Ptr Void -> IO ()
-#ccall signatureShareAdd, Ptr Void -> CInt -> CString -> CInt -> IO ()
+#ccall signatureShareAddWithId, Ptr Void -> CInt -> CString -> CInt -> IO ()
+#ccall signatureShareAdd, Ptr Void -> CString -> CInt -> CString -> CInt -> IO ()
 #ccall recoverSignatureNew, Ptr Void -> IO CString
+#ccall secretKeyAdd, CString -> CInt -> CString -> CInt -> IO CString
+#ccall publicKeyAdd, CString -> CInt -> CString -> CInt -> IO CString
 
 -- |
 -- Type of public key.
@@ -221,7 +228,45 @@ recover sigs = do
   ptr <- c'signatureShareNew $ fromIntegral $ size sigs
   void $ flip traverseWithKey sigs $ \ i (Signature sig) ->
     unsafeAsCStringLen sig $ \ sigPtr ->
-      uncurry (c'signatureShareAdd ptr (fromIntegral i)) sigPtr
+      uncurry (c'signatureShareAddWithId ptr (fromIntegral i)) sigPtr
   result <- c'recoverSignatureNew ptr
   c'signatureShareFree ptr
   Signature <$> extract result
+
+-- |
+-- Recover a BLS signature from a threshold of BLS signature shares.
+recoverSig :: [(MemberId, Signature)] -> IO Signature
+recoverSig sigs = do
+  ptr <- c'signatureShareNew $ fromIntegral $ length sigs
+  addSigs ptr sigs
+  result <- c'recoverSignatureNew ptr
+  c'signatureShareFree ptr
+  Signature <$> extract result
+  where
+    addSigs _   []          = return ()
+    addSigs ptr ((i, x):xs) = do
+      unsafeAsCStringLen (getSecretKey $ getMemberId i) $
+        unsafeAsCStringLen (getSignature x) . uncurry . uncurry (c'signatureShareAdd ptr)
+      addSigs ptr xs
+
+-- |
+-- Recover a BLS secret key from secret key shares.
+recoverSecretKey :: [SecretKey] -> IO SecretKey
+recoverSecretKey [] = error "recoverSecretKey: input list cannot be empty"
+recoverSecretKey (key:keys) = unsafeAsCStringLen (getSecretKey key) (addSecretKeys keys)
+  where
+    addSecretKeys (x:xs) k@(_, n) =
+      unsafeAsCStringLen (getSecretKey x) (uncurry (uncurry c'secretKeyAdd k)) >>=
+      addSecretKeys xs . (,n)
+    addSecretKeys  []      (p, _) = SecretKey <$> extract p
+
+-- |
+-- Recover a BLS public key from public key shares.
+recoverPublicKey :: [PublicKey] -> IO PublicKey
+recoverPublicKey [] = error "recoverPublicKey: input list cannot be empty"
+recoverPublicKey (key:keys) = unsafeAsCStringLen (getPublicKey key) (addPublicKeys keys)
+  where
+    addPublicKeys (x:xs) k@(_, n) =
+      unsafeAsCStringLen (getPublicKey x) (uncurry (uncurry c'publicKeyAdd k)) >>=
+      addPublicKeys xs . (,n)
+    addPublicKeys  []      (p, _) = PublicKey <$> extract p
