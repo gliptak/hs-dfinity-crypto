@@ -253,20 +253,20 @@ recoverSig sigs = do
 -- Recover a BLS secret key from secret key shares.
 recoverSecretKey :: [SecretKey] -> IO SecretKey
 recoverSecretKey [] = error "recoverSecretKey: input list cannot be empty"
-recoverSecretKey (key:keys) = unsafeAsCStringLen (getSecretKey key) (addSecretKeys keys)
+recoverSecretKey (key:keys) = addSecretKeys keys (getSecretKey key)
   where
-    addSecretKeys (x:xs) k@(_, n) =
-      unsafeAsCStringLen (getSecretKey x) (uncurry (uncurry c'secretKeyAdd k)) >>=
-      addSecretKeys xs . (,n)
-    addSecretKeys  []      (p, _) = SecretKey <$> extract p
+    addSecretKeys (x:xs) k = (unsafeAsCStringLen k $
+      unsafeAsCStringLen (getSecretKey x) . uncurry . uncurry c'secretKeyAdd) >>=
+      extract >>= addSecretKeys xs
+    addSecretKeys []     k = return (SecretKey k)
 
 -- |
 -- Recover a BLS public key from public key shares.
 recoverPublicKey :: [PublicKey] -> IO PublicKey
 recoverPublicKey [] = error "recoverPublicKey: input list cannot be empty"
-recoverPublicKey (key:keys) = unsafeAsCStringLen (getPublicKey key) (addPublicKeys keys)
+recoverPublicKey (key:keys) = addPublicKeys keys (getPublicKey key)
   where
-    addPublicKeys (x:xs) k@(_, n) =
-      unsafeAsCStringLen (getPublicKey x) (uncurry (uncurry c'publicKeyAdd k)) >>=
-      addPublicKeys xs . (,n)
-    addPublicKeys  []      (p, _) = PublicKey <$> extract p
+    addPublicKeys (x:xs) k = (unsafeAsCStringLen k $
+      unsafeAsCStringLen (getPublicKey x) . uncurry . uncurry c'publicKeyAdd) >>=
+      extract >>= addPublicKeys xs
+    addPublicKeys  []    k = return (PublicKey k)
