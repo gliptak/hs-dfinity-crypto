@@ -23,13 +23,15 @@ module Crypto.BLS
   ) where
 
 import Control.Monad          (foldM, void, (<=<))
+import Data.Hashable          (Hashable)
 import Data.Binary            (Binary)
-import Data.ByteString.Char8  (ByteString)
+import Data.ByteString.Char8  (ByteString, unpack)
 import Data.ByteString.Unsafe (unsafePackCStringFinalizer, unsafeUseAsCStringLen)
 import Data.IntMap.Strict     (IntMap, empty, insert, size, traverseWithKey)
 import Data.String            (IsString)
 import Data.Void              (Void)
 import Data.Word              (Word8)
+import Data.Hex               (hex)
 import Foreign.C.Types        (CChar, CInt(..))
 import Foreign.C.String       (CString)
 import Foreign.Marshal.Array  (withArray)
@@ -65,22 +67,27 @@ import GHC.Generics           (Generic)
 -- |
 -- Type of public key.
 newtype PublicKey = PublicKey { getPublicKey :: ByteString }
-  deriving (Eq, Generic, IsString, Ord, Read, Show)
+  deriving (Eq, Generic, IsString, Ord, Hashable)
 
 -- |
 -- Type of secret key.
 newtype SecretKey = SecretKey { getSecretKey :: ByteString }
-  deriving (Eq, Generic, IsString, Ord, Read, Show)
+  deriving (Eq, Generic, IsString, Ord, Hashable)
 
 -- |
 -- Type of signature.
 newtype Signature = Signature { getSignature :: ByteString }
-  deriving (Eq, Generic, IsString, Ord, Read, Show)
+  deriving (Eq, Generic, IsString, Ord, Hashable)
 
 -- |
 -- In BLS, @MemberId@ is basically the same as a @SecretKey@.
 newtype MemberId = MemberId { getMemberId :: SecretKey }
-  deriving (Eq, Generic, IsString, Ord, Read, Show)
+  deriving (Eq, Generic, IsString, Ord, Hashable)
+
+instance Show PublicKey where show (PublicKey h) = unpack $ hex h
+instance Show SecretKey where show (SecretKey h) = unpack $ hex h
+instance Show Signature where show (Signature h) = unpack $ hex h
+instance Show MemberId  where show (MemberId  h) = show h
 
 -- |
 -- Type of a BLS group.
@@ -89,12 +96,13 @@ data Group =
   { groupMembers   :: IntMap (PublicKey, SecretKey)
   , groupPublicKey :: PublicKey
   , groupThreshold :: Int
-  } deriving (Eq, Generic, Ord, Read, Show)
+  } deriving (Eq, Generic, Ord, Show)
 
 instance Binary Group
 instance Binary PublicKey
 instance Binary SecretKey
 instance Binary Signature
+instance Binary MemberId
 
 extract :: CString -> IO ByteString
 extract str = peek ptr >>= \ len ->

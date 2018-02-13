@@ -20,6 +20,8 @@ library
     binary,
     bindings-DSL,
     bytestring,
+    hashable,
+    hex,
     containers
   c-sources:
     cbits/hs-bls.c
@@ -53,6 +55,8 @@ test-suite bls-unit-tests
     binary,
     bindings-DSL,
     bytestring,
+    hashable,
+    hex,
     containers,
     random-shuffle
   c-sources:
