@@ -25,7 +25,8 @@ module Crypto.BLS
 import Control.Monad          (foldM, void, (<=<))
 import Data.Hashable          (Hashable)
 import Data.Binary            (Binary)
-import Data.ByteString.Char8  (ByteString, unpack)
+import Data.ByteString.Char8  (unpack)
+import Data.ByteString.Short  (ShortByteString, toShort, fromShort)
 import Data.ByteString.Unsafe (unsafePackCStringFinalizer, unsafeUseAsCStringLen)
 import Data.IntMap.Strict     (IntMap, empty, insert, size, traverseWithKey)
 import Data.String            (IsString)
@@ -66,17 +67,17 @@ import GHC.Generics           (Generic)
 
 -- |
 -- Type of public key.
-newtype PublicKey = PublicKey { getPublicKey :: ByteString }
+newtype PublicKey = PublicKey { getPublicKey :: ShortByteString }
   deriving (Eq, Generic, IsString, Ord, Hashable)
 
 -- |
 -- Type of secret key.
-newtype SecretKey = SecretKey { getSecretKey :: ByteString }
+newtype SecretKey = SecretKey { getSecretKey :: ShortByteString }
   deriving (Eq, Generic, IsString, Ord, Hashable)
 
 -- |
 -- Type of signature.
-newtype Signature = Signature { getSignature :: ByteString }
+newtype Signature = Signature { getSignature :: ShortByteString }
   deriving (Eq, Generic, IsString, Ord, Hashable)
 
 -- |
@@ -84,9 +85,9 @@ newtype Signature = Signature { getSignature :: ByteString }
 newtype MemberId = MemberId { getMemberId :: SecretKey }
   deriving (Eq, Generic, IsString, Ord, Hashable)
 
-instance Show PublicKey where show (PublicKey h) = unpack $ hex h
-instance Show SecretKey where show (SecretKey h) = unpack $ hex h
-instance Show Signature where show (Signature h) = unpack $ hex h
+instance Show PublicKey where show (PublicKey h) = unpack $ hex $ fromShort h
+instance Show SecretKey where show (SecretKey h) = unpack $ hex $ fromShort h
+instance Show Signature where show (Signature h) = unpack $ hex $ fromShort h
 instance Show MemberId  where show (MemberId  h) = show h
 
 -- |
@@ -104,8 +105,8 @@ instance Binary SecretKey
 instance Binary Signature
 instance Binary MemberId
 
-extract :: CString -> IO ByteString
-extract str = peek ptr >>= \ len ->
+extract :: CString -> IO ShortByteString
+extract str = peek ptr >>= \ len -> toShort <$>
   unsafePackCStringFinalizer (plusPtr ptr 1) (fromIntegral len) (free ptr)
   where ptr = castPtr str :: Ptr Word8
 
@@ -114,14 +115,14 @@ extract str = peek ptr >>= \ len ->
 initialize :: IO ()
 initialize = c'shimInit
 
-unsafeAsCStringLen :: ByteString -> ((Ptr CChar, CInt) -> IO a) -> IO a
-unsafeAsCStringLen x f = unsafeUseAsCStringLen x (f . lenToCInt)
+unsafeAsCStringLen :: ShortByteString -> ((Ptr CChar, CInt) -> IO a) -> IO a
+unsafeAsCStringLen x f = unsafeUseAsCStringLen (fromShort x) (f . lenToCInt)
   where
     lenToCInt (p, l) = (p, fromIntegral l)
 
 -- |
 -- Derive a BLS secret key from a random seed.
-deriveSecretKey :: ByteString -> IO SecretKey
+deriveSecretKey :: ShortByteString -> IO SecretKey
 deriveSecretKey xxx =
   unsafeAsCStringLen xxx $ \ xxxPtr -> do
     result <- uncurry c'frmapnew xxxPtr
@@ -129,7 +130,7 @@ deriveSecretKey xxx =
 
 -- |
 -- Derive a BLS member id from a random seed.
-deriveMemberId :: ByteString -> IO MemberId
+deriveMemberId :: ShortByteString -> IO MemberId
 deriveMemberId = fmap MemberId . deriveSecretKey
 
 -- |
@@ -142,7 +143,7 @@ derivePublicKey (SecretKey sec) =
 
 -- |
 -- Sign a message using a BLS secret key.
-sign :: SecretKey -> ByteString -> IO Signature
+sign :: SecretKey -> ShortByteString -> IO Signature
 sign (SecretKey sec) msg =
   unsafeAsCStringLen sec $ \ secPtr ->
     unsafeAsCStringLen msg $ \ msgPtr -> do
@@ -151,7 +152,7 @@ sign (SecretKey sec) msg =
 
 -- |
 -- Verify a BLS signature on a message using a BLS public key.
-verifySig :: Signature -> ByteString -> PublicKey -> IO Bool
+verifySig :: Signature -> ShortByteString -> PublicKey -> IO Bool
 verifySig (Signature sig) msg (PublicKey pub) =
   unsafeAsCStringLen sig $ \ sigPtr ->
     unsafeAsCStringLen msg $ \ msgPtr ->
@@ -161,7 +162,7 @@ verifySig (Signature sig) msg (PublicKey pub) =
 
 -- |
 -- Prove possession of a BLS secret key.
-prove :: SecretKey -> IO ByteString
+prove :: SecretKey -> IO ShortByteString
 prove (SecretKey sec) =
   unsafeAsCStringLen sec $ \ secPtr -> do
     result <- uncurry c'getPopNew secPtr
@@ -169,7 +170,7 @@ prove (SecretKey sec) =
 
 -- |
 -- Verify a proof of possession using a BLS public key.
-verifyPop :: ByteString -> PublicKey -> IO Bool
+verifyPop :: ShortByteString -> PublicKey -> IO Bool
 verifyPop pop (PublicKey pub) =
   unsafeAsCStringLen pop $ \ popPtr ->
     unsafeAsCStringLen pub $ \ pubPtr -> do

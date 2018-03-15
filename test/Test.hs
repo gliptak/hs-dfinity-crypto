@@ -1,7 +1,8 @@
 module Main where
 
 import Control.Monad         ((<=<), foldM, join, liftM, liftM2, replicateM, zipWithM)
-import Data.ByteString.Char8 (ByteString, pack)
+import Data.ByteString.Char8 (pack)
+import Data.ByteString.Short (ShortByteString, toShort, fromShort)
 import Data.IntMap.Strict    (empty, insert, toList)
 import System.Exit           (ExitCode(..), exitWith)
 import System.Random.Shuffle (shuffleM)
@@ -10,10 +11,10 @@ import Test.QuickCheck       (Arbitrary(..), sample')
 
 import Crypto.BLS
 
-instance Arbitrary ByteString where
-  arbitrary = pack <$> arbitrary
+instance Arbitrary ShortByteString where
+  arbitrary = toShort . pack <$> arbitrary
 
-testSignVerify :: ByteString -> ByteString -> IO Test
+testSignVerify :: ShortByteString -> ShortByteString -> IO Test
 testSignVerify seed message = do
   secretKey <- deriveSecretKey seed
   publicKey <- derivePublicKey secretKey
@@ -22,7 +23,7 @@ testSignVerify seed message = do
   pure . TestCase $ assertEqual debug True success
   where debug = concat ["\nTest: SignVerify\nSeed: ", show seed, "\nMessage: ", show message]
 
-testProveVerify :: ByteString -> IO Test
+testProveVerify :: ShortByteString -> IO Test
 testProveVerify seed = do
   secretKey <- deriveSecretKey seed
   publicKey <- derivePublicKey secretKey
@@ -31,7 +32,7 @@ testProveVerify seed = do
   pure . TestCase $ assertEqual debug True success
   where debug = concat ["\nTest: ProveVerify\nSeed: ", show seed]
 
-testShamir :: ByteString -> IO Test
+testShamir :: ShortByteString -> IO Test
 testShamir message = do
   Group {..} <- shamir 201 400
   participants <- shuffleM $ toList groupMembers
@@ -44,7 +45,7 @@ testShamir message = do
           signature <- sign secretKey message
           pure $ insert i signature accum
 
-random :: IO [ByteString]
+random :: IO [ShortByteString]
 random = sample' arbitrary
 
 tests :: IO [[Test]]
