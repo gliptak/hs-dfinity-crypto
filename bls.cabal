@@ -36,9 +36,9 @@ library
     Crypto.BLS
   extra-libraries:
     bls384
-    crypto
     gmpxx
     mcl
+    crypto
     stdc++
   ghc-options:
     -O2
@@ -71,9 +71,9 @@ test-suite bls-unit-tests
     Haskell2010
   extra-libraries:
     bls384
-    crypto
     gmpxx
     mcl
+    crypto
     stdc++
   ghc-options:
     -O2
