@@ -1,8 +1,7 @@
 { pkgs ? import <nixpkgs> {} }:
   with pkgs;
   let
-    math = import ../bn/bn.nix
-    {
+    math = import ../bn/bn.nix {
       inherit clang gnumake gmpxx llvm openssl;
       stdenv = clangStdenv;
     };
