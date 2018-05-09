@@ -9,40 +9,38 @@
   bls ## t x[1]; \
   bls ## t ## Deserialize(x, s, n)
 
-#define OUT(t, x) \
-  enum { bufsz = 65 }; \
-  char *buf_ = malloc(bufsz); \
-  memset(buf_, 0, bufsz); \
-  *buf_ = bls ## t ## Serialize(buf_ + 1, bufsz - 1, x); \
-  return buf_
+#define OUT(t, x, out) \
+  enum { bufsz = 64 }; \
+  bls ## t ## Serialize(out, bufsz, x); \
+  return
 
 void shimInit() { blsInit(0, MCLBN_FP_UNIT_SIZE); }
 
-char *frmapnew(char *s, int slen) {
+void frmapnew(char *s, int slen, char *out) {
   blsSecretKey x[1];
   blsHashToSecretKey(x, s, slen);
-  OUT(SecretKey, x);
+  OUT(SecretKey, x, out);
 }
 
-char *fromSecretNew(char *s, int slen) {
+void fromSecretNew(char *s, int slen, char *out) {
   IN(SecretKey, x, s, slen);
   blsPublicKey gx[1];
   blsGetPublicKey(gx, x);
-  OUT(PublicKey, gx);
+  OUT(PublicKey, gx, out);
 }
 
-char *blsSignatureNew(char *s, int slen, char* m, int mlen) {
+void blsSignatureNew(char *s, int slen, char* m, int mlen, char *out) {
   IN(SecretKey, x, s, slen);
   blsSignature sig[1];
   blsSign(sig, x, m, mlen);
-  OUT(Signature, sig);
+  OUT(Signature, sig, out);
 }
 
-char *shimSign(char *s, int slen, char *m, int mlen) {
+void shimSign(char *s, int slen, char *m, int mlen, char *out) {
   IN(SecretKey, x, s, slen);
   blsSignature sig[1];
   blsSign(sig, x, m, mlen);
-  OUT(Signature, sig);
+  OUT(Signature, sig, out);
 }
 
 int shimVerify(char *s, int slen, char *t, int tlen, char *m, int mlen) {
@@ -51,11 +49,11 @@ int shimVerify(char *s, int slen, char *t, int tlen, char *m, int mlen) {
   return blsVerify(hx, gx, m, mlen);
 }
 
-char *getPopNew(char* t, int tlen) {
+void getPopNew(char* t, int tlen, char *out) {
   IN(SecretKey, x, t, tlen);
   blsSignature sig[1];
   blsGetPop(sig, x);
-  OUT(Signature, sig);
+  OUT(Signature, sig, out);
 }
 
 int shimVerifyPop(char *s, int slen, char *t, int tlen) {
@@ -93,12 +91,12 @@ void dkgFree(struct dkg* r) {
   free(r);
 }
 
-char *dkgPublicKeyNew(struct dkg* p, int i) {
+void dkgPublicKeyNew(struct dkg* p, int i, char *out) {
   assert(0 <= i && i < p->t);
-  OUT(PublicKey, p->pk + i);
+  OUT(PublicKey, p->pk + i, out);
 }
 
-char *dkgSecretShareNewWithId(struct dkg* p, int i) {
+void dkgSecretShareNewWithId(struct dkg* p, int i, char *out) {
   if (!i) {
     fprintf(stderr, "BUG: ID = 0\n");
     exit(1);
@@ -107,18 +105,18 @@ char *dkgSecretShareNewWithId(struct dkg* p, int i) {
   blsIdSetInt(id, i);
   blsSecretKey sh[1];
   blsSecretKeyShare(sh, p->sk, p->t, id);
-  OUT(SecretKey, sh);
+  OUT(SecretKey, sh, out);
 }
 
-char *dkgSecretShareNew(struct dkg* p, char* s, int slen) {
+void dkgSecretShareNew(struct dkg* p, char* s, int slen, char *out) {
   blsId id[1];
   blsIdDeserialize(id, s, slen);
   blsSecretKey sh[1];
   blsSecretKeyShare(sh, p->sk, p->t, id);
-  OUT(SecretKey, sh);
+  OUT(SecretKey, sh, out);
 }
 
-char *dkgPublicShareNew(void** ptr, int* ptrlen, int t, char *s, int slen) {
+void dkgPublicShareNew(void** ptr, int* ptrlen, int t, char *s, int slen, char *out) {
   blsPublicKey *pks = malloc(sizeof(blsPublicKey) * t);
   for (int i = 0; i < t; i ++) {
     blsPublicKeyDeserialize(pks + i, ptr[i], ptrlen[i]);
@@ -128,11 +126,11 @@ char *dkgPublicShareNew(void** ptr, int* ptrlen, int t, char *s, int slen) {
   blsIdDeserialize(id, s, slen);
   blsPublicKeyShare(pk, pks, t, id);
   free(pks);
-  OUT(PublicKey, pk);
+  OUT(PublicKey, pk, out);
 }
 
-char *dkgGroupPublicKeyNew(struct dkg* p) {
-  OUT(PublicKey, p->gpk);
+void dkgGroupPublicKeyNew(struct dkg* p, char *out) {
+  OUT(PublicKey, p->gpk, out);
 }
 
 struct sigshare {
@@ -177,26 +175,26 @@ void signatureShareAdd(struct sigshare *p, char *id, int idlen, char *sig, int s
   p->i++;
 }
 
-char *recoverSignatureNew(struct sigshare *p) {
+void recoverSignatureNew(struct sigshare *p, char *out) {
   if (p->i != p->t) {
     fprintf(stderr, "BUG: too few signature shares\n");
     exit(1);
   }
   blsSignature sig[1];
   blsSignatureRecover(sig, p->sig, p->id, p->t);
-  OUT(Signature, sig);
+  OUT(Signature, sig, out);
 }
 
-char *secretKeyAdd(char *s, int slen, char *t, int tlen) {
+void secretKeyAdd(char *s, int slen, char *t, int tlen, char *out) {
   IN(SecretKey, x, s, slen);
   IN(SecretKey, y, t, tlen);
   blsSecretKeyAdd(x, y);
-  OUT(SecretKey, x);
+  OUT(SecretKey, x, out);
 }
 
-char *publicKeyAdd(char *s, int slen, char *t, int tlen) {
+void publicKeyAdd(char *s, int slen, char *t, int tlen, char *out) {
   IN(PublicKey, x, s, slen);
   IN(PublicKey, y, t, tlen);
   blsPublicKeyAdd(x, y);
-  OUT(PublicKey, x);
+  OUT(PublicKey, x, out);
 }

@@ -22,11 +22,12 @@ module Crypto.BLS
   , newPublicKeyShare
   ) where
 
-import Control.Monad          (foldM, void, (<=<))
+import Control.Monad          (foldM, void)
 import Data.Hashable          (Hashable)
 import Data.Binary            (Binary)
 import Data.ByteString.Char8  (ByteString, unpack)
-import Data.ByteString.Unsafe (unsafePackCStringFinalizer, unsafeUseAsCStringLen)
+import Data.ByteString.Unsafe (unsafeUseAsCStringLen)
+import Data.ByteString.Internal (create)
 import Data.IntMap.Strict     (IntMap, empty, insert, size, traverseWithKey)
 import Data.String            (IsString)
 import Data.Void              (Void)
@@ -36,35 +37,35 @@ import Data.List              (foldl')
 import Foreign.C.Types        (CChar, CInt(..))
 import Foreign.C.String       (CString)
 import Foreign.Marshal.Array  (withArray)
-import Foreign.Marshal.Alloc  (free)
-import Foreign.Ptr            (FunPtr, Ptr, castPtr, plusPtr)
-import Foreign.Storable       (peek)
+import Foreign.Ptr            (FunPtr, Ptr, castPtr)
 import GHC.Generics           (Generic)
 import System.IO.Unsafe       (unsafePerformIO)
 
 #include <bindings.dsl.h>
 
+type MkByteString = Ptr Word8 -> IO ()
+
 #ccall shimInit, IO ()
-#ccall shimSign, CString -> CInt -> CString -> CInt -> IO CString
+#ccall shimSign, CString -> CInt -> CString -> CInt -> MkByteString
 #ccall shimVerify, CString -> CInt -> CString -> CInt -> CString -> CInt -> IO CInt
-#ccall fromSecretNew, CString -> CInt -> IO CString
-#ccall getPopNew, CString -> CInt -> IO CString
+#ccall fromSecretNew, CString -> CInt -> MkByteString
+#ccall getPopNew, CString -> CInt -> MkByteString
 #ccall shimVerifyPop, CString -> CInt -> CString -> CInt -> IO CInt
-#ccall frmapnew, CString -> CInt -> IO CString
+#ccall frmapnew, CString -> CInt -> MkByteString
 #ccall dkgNew, CInt -> IO (Ptr Void)
 #ccall dkgFree, Ptr Void -> IO ()
-#ccall dkgSecretShareNewWithId, Ptr Void -> CInt -> IO CString
-#ccall dkgSecretShareNew, Ptr Void -> CString -> CInt -> IO CString
-#ccall dkgPublicKeyNew, Ptr Void -> CInt -> IO CString
-#ccall dkgPublicShareNew, Ptr Void -> Ptr CInt -> CInt -> CString -> CInt -> IO CString
-#ccall dkgGroupPublicKeyNew, Ptr Void -> IO CString
+#ccall dkgSecretShareNewWithId, Ptr Void -> CInt -> MkByteString
+#ccall dkgSecretShareNew, Ptr Void -> CString -> CInt -> MkByteString
+#ccall dkgPublicKeyNew, Ptr Void -> CInt -> MkByteString
+#ccall dkgPublicShareNew, Ptr Void -> Ptr CInt -> CInt -> CString -> CInt -> MkByteString
+#ccall dkgGroupPublicKeyNew, Ptr Void -> MkByteString
 #ccall signatureShareNew, CInt -> IO (Ptr Void)
 #ccall signatureShareFree, Ptr Void -> IO ()
 #ccall signatureShareAddWithId, Ptr Void -> CInt -> CString -> CInt -> IO ()
 #ccall signatureShareAdd, Ptr Void -> CString -> CInt -> CString -> CInt -> IO ()
-#ccall recoverSignatureNew, Ptr Void -> IO CString
-#ccall secretKeyAdd, CString -> CInt -> CString -> CInt -> IO CString
-#ccall publicKeyAdd, CString -> CInt -> CString -> CInt -> IO CString
+#ccall recoverSignatureNew, Ptr Void -> MkByteString
+#ccall secretKeyAdd, CString -> CInt -> CString -> CInt -> MkByteString
+#ccall publicKeyAdd, CString -> CInt -> CString -> CInt -> MkByteString
 
 -- |
 -- Type of public key.
@@ -106,16 +107,8 @@ instance Binary SecretKey
 instance Binary Signature
 instance Binary MemberId
 
-extract :: CString -> IO ByteString
-extract str = peek ptr >>= \ len ->
-  unsafePackCStringFinalizer (plusPtr ptr 1) (fromIntegral len) (free ptr)
-  where ptr = castPtr str :: Ptr Word8
-
-extractAs :: (ByteString -> a) -> CString -> IO a
-extractAs f str = f <$> extract str
-
-unsafePerformExtract :: IO CString -> ByteString
-unsafePerformExtract ioStr = unsafePerformIO $ ioStr >>= extract
+createAs :: (ByteString -> b) -> MkByteString -> IO b
+createAs f act = f <$> create 64 act
 
 unsafeAsCStringLen :: ByteString -> ((Ptr CChar, CInt) -> IO a) -> IO a
 unsafeAsCStringLen x f = unsafeUseAsCStringLen x (f . lenToCInt)
@@ -132,24 +125,39 @@ unsafeListAsCStringLen xx f = aux (reverse xx) []
 unsafeCIO1 :: (CString -> CInt -> IO a)
            ->  ByteString      -> IO a
 unsafeCIO1 cfunc xxx =
-  unsafeAsCStringLen xxx $ \ xxxPtr -> do
+  unsafeAsCStringLen xxx $ \ xxxPtr ->
     uncurry cfunc xxxPtr
+
+{-# INLINE unsafeCIO1b #-}
+unsafeCIO1b :: (CString -> CInt -> MkByteString)
+           ->   ByteString      -> IO ByteString
+unsafeCIO1b cfunc xxx = create 64 $ \ptr ->
+  unsafeAsCStringLen xxx $ \ xxxPtr ->
+    uncurry cfunc xxxPtr ptr
 
 {-# INLINE unsafeCIO2 #-}
 unsafeCIO2 :: (CString -> CInt -> CString -> CInt -> IO a)
            ->  ByteString      -> ByteString      -> IO a
 unsafeCIO2 cfunc xxx yyy =
-  unsafeAsCStringLen xxx $ \ xxxPtr -> do
-    unsafeAsCStringLen yyy $ \ yyyPtr -> do
+  unsafeAsCStringLen xxx $ \ xxxPtr ->
+    unsafeAsCStringLen yyy $ \ yyyPtr ->
       uncurry (uncurry cfunc xxxPtr) yyyPtr
+
+{-# INLINE unsafeCIO2b #-}
+unsafeCIO2b :: (CString -> CInt -> CString -> CInt -> MkByteString)
+           ->   ByteString      -> ByteString      -> IO ByteString
+unsafeCIO2b cfunc xxx yyy = create 64 $ \ptr ->
+  unsafeAsCStringLen xxx $ \ xxxPtr ->
+    unsafeAsCStringLen yyy $ \ yyyPtr ->
+      uncurry (uncurry cfunc xxxPtr) yyyPtr ptr
 
 {-# INLINE unsafeCIO3 #-}
 unsafeCIO3 :: (CString -> CInt -> CString -> CInt -> CString -> CInt -> IO a)
            ->  ByteString      -> ByteString      -> ByteString      -> IO a
 unsafeCIO3 cfunc xxx yyy zzz =
-  unsafeAsCStringLen xxx $ \ xxxPtr -> do
-    unsafeAsCStringLen yyy $ \ yyyPtr -> do
-      unsafeAsCStringLen zzz $ \ zzzPtr -> do
+  unsafeAsCStringLen xxx $ \ xxxPtr ->
+    unsafeAsCStringLen yyy $ \ yyyPtr ->
+      unsafeAsCStringLen zzz $ \ zzzPtr ->
         uncurry (uncurry (uncurry cfunc xxxPtr) yyyPtr) zzzPtr
 
 -- |
@@ -160,7 +168,7 @@ initialize = c'shimInit
 -- |
 -- Derive a BLS secret key from a random seed.
 deriveSecretKey :: ByteString -> SecretKey
-deriveSecretKey seed = SecretKey $ unsafePerformExtract $ unsafeCIO1 c'frmapnew seed
+deriveSecretKey seed = unsafePerformIO $ SecretKey <$> unsafeCIO1b c'frmapnew seed
 
 -- |
 -- Derive a BLS member id from a random seed.
@@ -170,12 +178,12 @@ deriveMemberId = MemberId . deriveSecretKey
 -- |
 -- Derive a BLS public key from a BLS secret key.
 derivePublicKey :: SecretKey -> PublicKey
-derivePublicKey (SecretKey sec) = PublicKey $ unsafePerformExtract $ unsafeCIO1 c'fromSecretNew sec
+derivePublicKey (SecretKey sec) = unsafePerformIO $ PublicKey <$> unsafeCIO1b c'fromSecretNew sec
 
 -- |
 -- Sign a message using a BLS secret key.
 sign :: SecretKey -> ByteString -> Signature
-sign (SecretKey sec) msg = Signature $ unsafePerformExtract $ unsafeCIO2 c'shimSign sec msg
+sign (SecretKey sec) msg = unsafePerformIO $ Signature <$> unsafeCIO2b c'shimSign sec msg
 
 -- |
 -- Verify a BLS signature on a message using a BLS public key.
@@ -185,7 +193,7 @@ verifySig (Signature sig) msg (PublicKey pub) = unsafePerformIO $ (> 0) <$> unsa
 -- |
 -- Prove possession of a BLS secret key.
 prove :: SecretKey -> ByteString
-prove (SecretKey sec) = unsafePerformExtract $ unsafeCIO1 c'getPopNew sec
+prove (SecretKey sec) = unsafePerformIO $ unsafeCIO1b c'getPopNew sec
 
 -- |
 -- Verify a proof of possession using a BLS public key.
@@ -205,12 +213,12 @@ shamir t' n' = unsafePerformIO $ do
       n = fromIntegral n' :: CInt
   ptr <- c'dkgNew t
   members <- foldM (step ptr) empty [1..n]
-  publicKey <- c'dkgGroupPublicKeyNew ptr >>= extractAs PublicKey
+  publicKey <- createAs PublicKey $ c'dkgGroupPublicKeyNew ptr
   c'dkgFree ptr
   pure $ Group members publicKey t'
   where
   step ptr acc i = do
-    secretKey <- c'dkgSecretShareNewWithId ptr i >>= extractAs SecretKey
+    secretKey <- createAs SecretKey $ c'dkgSecretShareNewWithId ptr i
     let publicKey = derivePublicKey secretKey
     pure $ insert (fromIntegral i) (publicKey, secretKey) acc
 
@@ -220,12 +228,12 @@ newContribution :: Int -> [MemberId] -> ([PublicKey], [SecretKey])
 newContribution t' cids = unsafePerformIO $ do
   let t = fromIntegral t'
   ptr <- c'dkgNew t
-  publicKeyShares <- mapM (extractAs PublicKey <=< c'dkgPublicKeyNew ptr) [0..(t-1)]
-  secretKeyShares <- mapM (extractAs SecretKey <=< mkShare ptr) cids
+  publicKeyShares <- mapM (createAs PublicKey . c'dkgPublicKeyNew ptr) [0..(t-1)]
+  secretKeyShares <- mapM (fmap SecretKey . mkShare ptr) cids
   c'dkgFree ptr
   return (publicKeyShares, secretKeyShares)
   where
-   mkShare ptr cid = unsafeCIO1 (c'dkgSecretShareNew ptr) (getSecretKey $ getMemberId cid)
+   mkShare ptr cid = unsafeCIO1b (c'dkgSecretShareNew ptr) (getSecretKey $ getMemberId cid)
 
 -- |
 -- Create a public key from verification vector for a given id.
@@ -236,8 +244,7 @@ newPublicKeyShare vt (MemberId (SecretKey cid)) = unsafePerformIO $
     let n = fromIntegral $ length ptrlens
     withArray ptrs $ \ptr ->
       withArray ptrlens $ \ptrlen ->
-        unsafeCIO1 (c'dkgPublicShareNew (castPtr ptr) ptrlen n) cid >>=
-        extractAs PublicKey
+        PublicKey <$> unsafeCIO1b (c'dkgPublicShareNew (castPtr ptr) ptrlen n) cid
 
 -- |
 -- Recover a BLS signature from a threshold of BLS signature shares.
@@ -245,9 +252,9 @@ recover :: IntMap Signature -> Signature
 recover sigs = unsafePerformIO $ do
   ptr <- c'signatureShareNew $ fromIntegral $ size sigs
   addSigs ptr sigs
-  result <- c'recoverSignatureNew ptr
+  result <- createAs Signature $ c'recoverSignatureNew ptr
   c'signatureShareFree ptr
-  extractAs Signature result
+  return result
   where
     addSigs ptr ss = void $ flip traverseWithKey ss $ \ i (Signature s) ->
       unsafeCIO1 (c'signatureShareAddWithId ptr (fromIntegral i)) s
@@ -258,25 +265,21 @@ recoverSig :: [(MemberId, Signature)] -> Signature
 recoverSig sigs = unsafePerformIO $ do
   ptr <- c'signatureShareNew $ fromIntegral $ length sigs
   addSigs ptr sigs
-  result <- c'recoverSignatureNew ptr
+  result <- createAs Signature $ c'recoverSignatureNew ptr
   c'signatureShareFree ptr
-  extractAs Signature result
+  return result
   where
     addSigs _   []          = return ()
     addSigs ptr ((i, x):xs) = do
       unsafeCIO2 (c'signatureShareAdd ptr) (getSignature x) (getSecretKey $ getMemberId i)
       addSigs ptr xs
 
--- fmap a function of 2 arguments, aka "boob operator"
-(.:) :: (b -> c) -> (a1 -> a2 -> b) -> a1 -> a2 -> c
-(.:) = (.) . (.)
-
 -- |
 -- Recover a BLS secret key from secret key shares.
 recoverSecretKey :: [SecretKey] -> SecretKey
 recoverSecretKey [] = error "recoverSecretKey: input list cannot be empty"
 recoverSecretKey keys = SecretKey $
-  foldl' (unsafePerformExtract .: unsafeCIO2 c'secretKeyAdd) k ks
+  foldl' (fmap unsafePerformIO . unsafeCIO2b c'secretKeyAdd) k ks
   where k:ks = getSecretKey <$> keys
 
 -- |
@@ -284,5 +287,5 @@ recoverSecretKey keys = SecretKey $
 recoverPublicKey :: [PublicKey] -> PublicKey
 recoverPublicKey [] = error "recoverPublicKey: input list cannot be empty"
 recoverPublicKey keys = PublicKey $
-  foldl' (unsafePerformExtract .: unsafeCIO2 c'publicKeyAdd) k ks
+  foldl' (fmap unsafePerformIO . unsafeCIO2b c'publicKeyAdd) k ks
   where k:ks = getPublicKey <$> keys
