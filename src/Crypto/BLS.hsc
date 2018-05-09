@@ -45,27 +45,27 @@ import System.IO.Unsafe       (unsafePerformIO)
 
 type MkByteString = Ptr Word8 -> IO ()
 
-#ccall shimInit, IO ()
-#ccall shimSign, CString -> CInt -> CString -> CInt -> MkByteString
-#ccall shimVerify, CString -> CInt -> CString -> CInt -> CString -> CInt -> IO CInt
-#ccall fromSecretNew, CString -> CInt -> MkByteString
-#ccall getPopNew, CString -> CInt -> MkByteString
-#ccall shimVerifyPop, CString -> CInt -> CString -> CInt -> IO CInt
-#ccall frmapnew, CString -> CInt -> MkByteString
-#ccall dkgNew, CInt -> IO (Ptr Void)
-#ccall dkgFree, Ptr Void -> IO ()
-#ccall dkgSecretShareNewWithId, Ptr Void -> CInt -> MkByteString
-#ccall dkgSecretShareNew, Ptr Void -> CString -> CInt -> MkByteString
-#ccall dkgPublicKeyNew, Ptr Void -> CInt -> MkByteString
-#ccall dkgPublicShareNew, Ptr Void -> Ptr CInt -> CInt -> CString -> CInt -> MkByteString
-#ccall dkgGroupPublicKeyNew, Ptr Void -> MkByteString
-#ccall signatureShareNew, CInt -> IO (Ptr Void)
-#ccall signatureShareFree, Ptr Void -> IO ()
-#ccall signatureShareAddWithId, Ptr Void -> CInt -> CString -> CInt -> IO ()
-#ccall signatureShareAdd, Ptr Void -> CString -> CInt -> CString -> CInt -> IO ()
-#ccall recoverSignatureNew, Ptr Void -> MkByteString
-#ccall secretKeyAdd, CString -> CInt -> CString -> CInt -> MkByteString
-#ccall publicKeyAdd, CString -> CInt -> CString -> CInt -> MkByteString
+#ccall_unsafe shimInit, IO ()
+#ccall_unsafe shimSign, CString -> CInt -> CString -> CInt -> MkByteString
+#ccall_unsafe shimVerify, CString -> CInt -> CString -> CInt -> CString -> CInt -> IO CInt
+#ccall_unsafe fromSecretNew, CString -> CInt -> MkByteString
+#ccall_unsafe getPopNew, CString -> CInt -> MkByteString
+#ccall_unsafe shimVerifyPop, CString -> CInt -> CString -> CInt -> IO CInt
+#ccall_unsafe frmapnew, CString -> CInt -> MkByteString
+#ccall_unsafe dkgNew, CInt -> IO (Ptr Void)
+#ccall_unsafe dkgFree, Ptr Void -> IO ()
+#ccall_unsafe dkgSecretShareNewWithId, Ptr Void -> CInt -> MkByteString
+#ccall_unsafe dkgSecretShareNew, Ptr Void -> CString -> CInt -> MkByteString
+#ccall_unsafe dkgPublicKeyNew, Ptr Void -> CInt -> MkByteString
+#ccall_unsafe dkgPublicShareNew, Ptr Void -> Ptr CInt -> CInt -> CString -> CInt -> MkByteString
+#ccall_unsafe dkgGroupPublicKeyNew, Ptr Void -> MkByteString
+#ccall_unsafe signatureShareNew, CInt -> IO (Ptr Void)
+#ccall_unsafe signatureShareFree, Ptr Void -> IO ()
+#ccall_unsafe signatureShareAddWithId, Ptr Void -> CInt -> CString -> CInt -> IO ()
+#ccall_unsafe signatureShareAdd, Ptr Void -> CString -> CInt -> CString -> CInt -> IO ()
+#ccall_unsafe recoverSignatureNew, Ptr Void -> MkByteString
+#ccall_unsafe secretKeyAdd, CString -> CInt -> CString -> CInt -> MkByteString
+#ccall_unsafe publicKeyAdd, CString -> CInt -> CString -> CInt -> MkByteString
 
 -- |
 -- Type of public key.
@@ -163,12 +163,12 @@ unsafeCIO3 cfunc xxx yyy zzz =
 -- |
 -- Initialize a BLS cryptosystem.
 initialize :: IO ()
-initialize = c'shimInit
+initialize = unsafe'c'shimInit
 
 -- |
 -- Derive a BLS secret key from a random seed.
 deriveSecretKey :: ByteString -> SecretKey
-deriveSecretKey seed = unsafePerformIO $ SecretKey <$> unsafeCIO1b c'frmapnew seed
+deriveSecretKey seed = unsafePerformIO $ SecretKey <$> unsafeCIO1b unsafe'c'frmapnew seed
 
 -- |
 -- Derive a BLS member id from a random seed.
@@ -178,27 +178,27 @@ deriveMemberId = MemberId . deriveSecretKey
 -- |
 -- Derive a BLS public key from a BLS secret key.
 derivePublicKey :: SecretKey -> PublicKey
-derivePublicKey (SecretKey sec) = unsafePerformIO $ PublicKey <$> unsafeCIO1b c'fromSecretNew sec
+derivePublicKey (SecretKey sec) = unsafePerformIO $ PublicKey <$> unsafeCIO1b unsafe'c'fromSecretNew sec
 
 -- |
 -- Sign a message using a BLS secret key.
 sign :: SecretKey -> ByteString -> Signature
-sign (SecretKey sec) msg = unsafePerformIO $ Signature <$> unsafeCIO2b c'shimSign sec msg
+sign (SecretKey sec) msg = unsafePerformIO $ Signature <$> unsafeCIO2b unsafe'c'shimSign sec msg
 
 -- |
 -- Verify a BLS signature on a message using a BLS public key.
 verifySig :: Signature -> ByteString -> PublicKey -> Bool
-verifySig (Signature sig) msg (PublicKey pub) = unsafePerformIO $ (> 0) <$> unsafeCIO3 c'shimVerify sig pub msg
+verifySig (Signature sig) msg (PublicKey pub) = unsafePerformIO $ (> 0) <$> unsafeCIO3 unsafe'c'shimVerify sig pub msg
 
 -- |
 -- Prove possession of a BLS secret key.
 prove :: SecretKey -> ByteString
-prove (SecretKey sec) = unsafePerformIO $ unsafeCIO1b c'getPopNew sec
+prove (SecretKey sec) = unsafePerformIO $ unsafeCIO1b unsafe'c'getPopNew sec
 
 -- |
 -- Verify a proof of possession using a BLS public key.
 verifyPop :: ByteString -> PublicKey -> Bool
-verifyPop pop (PublicKey pub) = unsafePerformIO $ (> 0) <$> unsafeCIO2 c'shimVerifyPop pop pub
+verifyPop pop (PublicKey pub) = unsafePerformIO $ (> 0) <$> unsafeCIO2 unsafe'c'shimVerifyPop pop pub
 
 -- |
 -- Divide a BLS secret key into 'n' shares such that 't' shares can combine to
@@ -211,14 +211,14 @@ shamir t n | t < 1 || n < t = error "shamir: invalid arguments"
 shamir t' n' = unsafePerformIO $ do
   let t = fromIntegral t' :: CInt
       n = fromIntegral n' :: CInt
-  ptr <- c'dkgNew t
+  ptr <- unsafe'c'dkgNew t
   members <- foldM (step ptr) empty [1..n]
-  publicKey <- createAs PublicKey $ c'dkgGroupPublicKeyNew ptr
-  c'dkgFree ptr
+  publicKey <- createAs PublicKey $ unsafe'c'dkgGroupPublicKeyNew ptr
+  unsafe'c'dkgFree ptr
   pure $ Group members publicKey t'
   where
   step ptr acc i = do
-    secretKey <- createAs SecretKey $ c'dkgSecretShareNewWithId ptr i
+    secretKey <- createAs SecretKey $ unsafe'c'dkgSecretShareNewWithId ptr i
     let publicKey = derivePublicKey secretKey
     pure $ insert (fromIntegral i) (publicKey, secretKey) acc
 
@@ -227,13 +227,13 @@ shamir t' n' = unsafePerformIO $ do
 newContribution :: Int -> [MemberId] -> ([PublicKey], [SecretKey])
 newContribution t' cids = unsafePerformIO $ do
   let t = fromIntegral t'
-  ptr <- c'dkgNew t
-  publicKeyShares <- mapM (createAs PublicKey . c'dkgPublicKeyNew ptr) [0..(t-1)]
+  ptr <- unsafe'c'dkgNew t
+  publicKeyShares <- mapM (createAs PublicKey . unsafe'c'dkgPublicKeyNew ptr) [0..(t-1)]
   secretKeyShares <- mapM (fmap SecretKey . mkShare ptr) cids
-  c'dkgFree ptr
+  unsafe'c'dkgFree ptr
   return (publicKeyShares, secretKeyShares)
   where
-   mkShare ptr cid = unsafeCIO1b (c'dkgSecretShareNew ptr) (getSecretKey $ getMemberId cid)
+   mkShare ptr cid = unsafeCIO1b (unsafe'c'dkgSecretShareNew ptr) (getSecretKey $ getMemberId cid)
 
 -- |
 -- Create a public key from verification vector for a given id.
@@ -244,34 +244,34 @@ newPublicKeyShare vt (MemberId (SecretKey cid)) = unsafePerformIO $
     let n = fromIntegral $ length ptrlens
     withArray ptrs $ \ptr ->
       withArray ptrlens $ \ptrlen ->
-        PublicKey <$> unsafeCIO1b (c'dkgPublicShareNew (castPtr ptr) ptrlen n) cid
+        PublicKey <$> unsafeCIO1b (unsafe'c'dkgPublicShareNew (castPtr ptr) ptrlen n) cid
 
 -- |
 -- Recover a BLS signature from a threshold of BLS signature shares.
 recover :: IntMap Signature -> Signature
 recover sigs = unsafePerformIO $ do
-  ptr <- c'signatureShareNew $ fromIntegral $ size sigs
+  ptr <- unsafe'c'signatureShareNew $ fromIntegral $ size sigs
   addSigs ptr sigs
-  result <- createAs Signature $ c'recoverSignatureNew ptr
-  c'signatureShareFree ptr
+  result <- createAs Signature $ unsafe'c'recoverSignatureNew ptr
+  unsafe'c'signatureShareFree ptr
   return result
   where
     addSigs ptr ss = void $ flip traverseWithKey ss $ \ i (Signature s) ->
-      unsafeCIO1 (c'signatureShareAddWithId ptr (fromIntegral i)) s
+      unsafeCIO1 (unsafe'c'signatureShareAddWithId ptr (fromIntegral i)) s
 
 -- |
 -- Recover a BLS signature from a threshold of BLS signature shares.
 recoverSig :: [(MemberId, Signature)] -> Signature
 recoverSig sigs = unsafePerformIO $ do
-  ptr <- c'signatureShareNew $ fromIntegral $ length sigs
+  ptr <- unsafe'c'signatureShareNew $ fromIntegral $ length sigs
   addSigs ptr sigs
-  result <- createAs Signature $ c'recoverSignatureNew ptr
-  c'signatureShareFree ptr
+  result <- createAs Signature $ unsafe'c'recoverSignatureNew ptr
+  unsafe'c'signatureShareFree ptr
   return result
   where
     addSigs _   []          = return ()
     addSigs ptr ((i, x):xs) = do
-      unsafeCIO2 (c'signatureShareAdd ptr) (getSignature x) (getSecretKey $ getMemberId i)
+      unsafeCIO2 (unsafe'c'signatureShareAdd ptr) (getSignature x) (getSecretKey $ getMemberId i)
       addSigs ptr xs
 
 -- |
@@ -279,7 +279,7 @@ recoverSig sigs = unsafePerformIO $ do
 recoverSecretKey :: [SecretKey] -> SecretKey
 recoverSecretKey [] = error "recoverSecretKey: input list cannot be empty"
 recoverSecretKey keys = SecretKey $
-  foldl' (fmap unsafePerformIO . unsafeCIO2b c'secretKeyAdd) k ks
+  foldl' (fmap unsafePerformIO . unsafeCIO2b unsafe'c'secretKeyAdd) k ks
   where k:ks = getSecretKey <$> keys
 
 -- |
@@ -287,5 +287,5 @@ recoverSecretKey keys = SecretKey $
 recoverPublicKey :: [PublicKey] -> PublicKey
 recoverPublicKey [] = error "recoverPublicKey: input list cannot be empty"
 recoverPublicKey keys = PublicKey $
-  foldl' (fmap unsafePerformIO . unsafeCIO2b c'publicKeyAdd) k ks
+  foldl' (fmap unsafePerformIO . unsafeCIO2b unsafe'c'publicKeyAdd) k ks
   where k:ks = getPublicKey <$> keys
