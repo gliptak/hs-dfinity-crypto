@@ -15,33 +15,33 @@ instance Arbitrary ByteString where
 
 testSignVerify :: ByteString -> ByteString -> IO Test
 testSignVerify seed message = do
-  secretKey <- deriveSecretKey seed
-  publicKey <- derivePublicKey secretKey
-  signature <- sign secretKey message
-  success <- verifySig signature message publicKey
+  let secretKey = deriveSecretKey seed
+  let publicKey = derivePublicKey secretKey
+  let signature = sign secretKey message
+  let success = verifySig signature message publicKey
   pure . TestCase $ assertEqual debug True success
   where debug = concat ["\nTest: SignVerify\nSeed: ", show seed, "\nMessage: ", show message]
 
 testProveVerify :: ByteString -> IO Test
 testProveVerify seed = do
-  secretKey <- deriveSecretKey seed
-  publicKey <- derivePublicKey secretKey
-  pop <- prove secretKey
-  success <- verifyPop pop publicKey
+  let secretKey = deriveSecretKey seed
+  let publicKey = derivePublicKey secretKey
+  let pop = prove secretKey
+  let success = verifyPop pop publicKey
   pure . TestCase $ assertEqual debug True success
   where debug = concat ["\nTest: ProveVerify\nSeed: ", show seed]
 
 testShamir :: ByteString -> IO Test
 testShamir message = do
-  Group {..} <- shamir 201 400
+  let Group {..} = shamir 201 400
   participants <- shuffleM $ toList groupMembers
   shares <- foldM step empty participants
-  signture <- recover shares
-  success <- verifySig signture message groupPublicKey
+  let signture = recover shares
+  let success = verifySig signture message groupPublicKey
   pure . TestCase $ assertEqual debug True success
   where debug = concat ["\nTest: Shamir\nMessage: ", show message]
         step accum (i, (_, secretKey)) = do
-          signature <- sign secretKey message
+          let signature = sign secretKey message
           pure $ insert i signature accum
 
 random :: IO [ByteString]
