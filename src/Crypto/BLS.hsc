@@ -271,7 +271,7 @@ recoverSig sigs = unsafePerformIO $ do
   where
     addSigs _   []          = return ()
     addSigs ptr ((i, x):xs) = do
-      unsafeCIO2 (unsafe'c'signatureShareAdd ptr) (getSignature x) (getSecretKey $ getMemberId i)
+      unsafeCIO2 (unsafe'c'signatureShareAdd ptr) (getSecretKey $ getMemberId i) (getSignature x)
       addSigs ptr xs
 
 -- |
