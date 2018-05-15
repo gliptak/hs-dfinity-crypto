@@ -34,7 +34,7 @@ import Data.Void              (Void)
 import Data.Word              (Word8)
 import Data.Hex               (hex)
 import Data.List              (foldl')
-import Foreign.C.Types        (CChar, CInt(..))
+import Foreign.C.Types        (CChar, CInt(..), CSize(..))
 import Foreign.C.String       (CString)
 import Foreign.Marshal.Array  (withArray)
 import Foreign.Ptr            (FunPtr, Ptr, castPtr)
@@ -43,7 +43,7 @@ import System.IO.Unsafe       (unsafePerformIO)
 
 #include <bindings.dsl.h>
 
-type MkByteString = Ptr Word8 -> IO CInt
+type MkByteString = Ptr Word8 -> IO CSize
 
 #ccall_unsafe shimInit, IO ()
 #ccall_unsafe shimSign, CString -> CInt -> CString -> CInt -> MkByteString
@@ -108,7 +108,7 @@ instance Binary Signature
 instance Binary MemberId
 
 createAs :: (ByteString -> b) -> MkByteString -> IO b
-createAs f act = f <$> createAndTrim 64 act
+createAs f act = f <$> createAndTrim 64 (fmap fromIntegral . act)
 
 unsafeAsCStringLen :: ByteString -> ((Ptr CChar, CInt) -> IO a) -> IO a
 unsafeAsCStringLen x f = unsafeUseAsCStringLen x (f . lenToCInt)
@@ -133,7 +133,7 @@ unsafeCIO1b :: (CString -> CInt -> MkByteString)
            ->   ByteString      -> IO ByteString
 unsafeCIO1b cfunc xxx = createAndTrim 64 $ \ptr ->
   unsafeAsCStringLen xxx $ \ xxxPtr ->
-    uncurry cfunc xxxPtr ptr
+    fromIntegral <$> uncurry cfunc xxxPtr ptr
 
 {-# INLINE unsafeCIO2 #-}
 unsafeCIO2 :: (CString -> CInt -> CString -> CInt -> IO a)
@@ -149,7 +149,7 @@ unsafeCIO2b :: (CString -> CInt -> CString -> CInt -> MkByteString)
 unsafeCIO2b cfunc xxx yyy = createAndTrim 64 $ \ptr ->
   unsafeAsCStringLen xxx $ \ xxxPtr ->
     unsafeAsCStringLen yyy $ \ yyyPtr ->
-      uncurry (uncurry cfunc xxxPtr) yyyPtr ptr
+      fromIntegral <$> uncurry (uncurry cfunc xxxPtr) yyyPtr ptr
 
 {-# INLINE unsafeCIO3 #-}
 unsafeCIO3 :: (CString -> CInt -> CString -> CInt -> CString -> CInt -> IO a)
