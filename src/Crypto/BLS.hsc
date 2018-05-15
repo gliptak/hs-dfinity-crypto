@@ -43,7 +43,7 @@ import System.IO.Unsafe       (unsafePerformIO)
 
 #include <bindings.dsl.h>
 
-type MkByteString = Ptr Word8 -> IO Int
+type MkByteString = Ptr Word8 -> IO CInt
 
 #ccall_unsafe shimInit, IO ()
 #ccall_unsafe shimSign, CString -> CInt -> CString -> CInt -> MkByteString
