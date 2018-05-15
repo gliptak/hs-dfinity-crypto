@@ -54,10 +54,13 @@ test-suite bls-unit-tests
       binary,
       bindings-DSL,
       bytestring,
+      containers,
+      cryptohash-sha256,
       hashable,
       hex,
-      containers,
-      random-shuffle
+      mwc-random,
+      random-shuffle,
+      vector
    c-sources:
       cbits/hs-bls.c
    cc-options:

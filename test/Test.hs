@@ -1,12 +1,16 @@
 module Main where
 
-import Control.Monad         ((<=<), foldM, join, liftM, liftM2, replicateM, zipWithM)
+import Control.Monad         (foldM, join, liftM, liftM2, replicateM, zipWithM)
 import Data.ByteString.Char8 (ByteString, pack)
 import Data.IntMap.Strict    (empty, insert, toList)
 import System.Exit           (ExitCode(..), exitWith)
 import System.Random.Shuffle (shuffleM)
 import Test.HUnit            (Counts(..), Test(..), assertEqual, runTestTT)
 import Test.QuickCheck       (Arbitrary(..), sample')
+
+import qualified Data.Vector           as V
+import qualified System.Random.MWC     as R
+import qualified Crypto.Hash.SHA256    as SHA256
 
 import Crypto.BLS
 
@@ -44,21 +48,48 @@ testShamir message = do
           let signature = sign secretKey message
           pure $ insert i signature accum
 
+testRecoverSig :: Int -> Int -> IO Test
+testRecoverSig n m = do
+  gen       <- R.create
+  mids      <- R.uniformVector gen n :: IO (V.Vector Int)
+  -- mids must all be unique, QC arbitrary sometimes generates list duplicates
+  let t = n * 2 `div` 3
+  (gpk, mbids, npks, nsks) <- centralizedGenerateGroup t (V.toList mids)
+  let miners = V.zip3 (V.fromList mbids) (V.fromList npks) (V.fromList nsks)
+  let loop :: Int -> Signature -> IO Signature
+      loop k msg
+        | k <= 0 = return msg
+        | otherwise = do
+          miners' <- shuffleM $ V.toList miners
+          let hash = SHA256.hash $ getSignature msg
+          let sigs = map (\(nid, _, nsk) -> (nid, sign nsk hash)) miners'
+          let sig = recoverSig sigs
+          if verifySig sig hash gpk then loop (k - 1) sig else
+            error "signature invalid"
+  result <- loop m (Signature $ pack "test")
+  return $ TestCase $ assertEqual (show result) True True
+
 random :: IO [ByteString]
 random = sample' arbitrary
 
-tests :: IO [[Test]]
-tests = sequence $ map join
+tests :: [IO Test]
+tests =  fmap TestList . replicateM 10 . fmap TestList . join <$>
   [
     liftM (mapM testShamir) random,
     liftM (mapM testProveVerify) random,
     liftM2 (zipWithM testSignVerify) random random
   ]
 
+singleTests :: [IO Test]
+singleTests =
+  [
+    testRecoverSig 10 1000
+  ]
+
 main :: IO ()
 main = do
   initialize
-  Counts {..} <- runTestTT . TestList <=< replicateM 10 $ TestList . concat <$> tests
+  Counts {..} <- runTestTT =<< TestList <$> sequence (tests ++ singleTests)
   exitWith $ case failures + errors of
     0 -> ExitSuccess
     _ -> ExitFailure 1

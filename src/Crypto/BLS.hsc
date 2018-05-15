@@ -1,4 +1,3 @@
-{-# LANGUAGE TupleSections #-}
 module Crypto.BLS
   ( SecretKey(..)
   , PublicKey(..)
@@ -20,12 +19,13 @@ module Crypto.BLS
   , recoverPublicKey
   , newContribution
   , newPublicKeyShare
+  , centralizedGenerateGroup
   ) where
 
 import Control.Monad          (foldM, void)
 import Data.Hashable          (Hashable)
 import Data.Binary            (Binary)
-import Data.ByteString.Char8  (ByteString, unpack)
+import Data.ByteString.Char8  (ByteString, pack, unpack)
 import Data.ByteString.Unsafe (unsafeUseAsCStringLen)
 import Data.ByteString.Internal (create)
 import Data.IntMap.Strict     (IntMap, empty, insert, size, traverseWithKey)
@@ -289,3 +289,18 @@ recoverPublicKey [] = error "recoverPublicKey: input list cannot be empty"
 recoverPublicKey keys = PublicKey $
   foldl' (fmap unsafePerformIO . unsafeCIO2b unsafe'c'publicKeyAdd) k ks
   where k:ks = getPublicKey <$> keys
+
+-- |
+-- Generate a group public key from a given list of secret seeds.
+-- More suitable for testing than for real privacy.
+centralizedGenerateGroup ::
+    (Show a, Monad m)
+  => Int -> [a] -> m (PublicKey, [MemberId], [PublicKey], [SecretKey])
+centralizedGenerateGroup t seeds = do
+  let n = length seeds
+  let mids = map (MemberId . deriveSecretKey . pack . show) seeds
+  let (pshares, sshares) = unzip $ replicate n (newContribution t mids)
+  let secrets = map (\i -> recoverSecretKey $ map (!! i) sshares) [0..n-1]
+  let pubkeys = map derivePublicKey secrets
+  let pubkey = recoverPublicKey $ map (!! 0) pshares
+  return (pubkey, mids, pubkeys, secrets)
