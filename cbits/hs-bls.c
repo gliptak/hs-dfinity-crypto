@@ -11,32 +11,31 @@
 
 #define OUT(t, x, out) \
   enum { bufsz = 64 }; \
-  bls ## t ## Serialize(out, bufsz, x); \
-  return
+  return bls ## t ## Serialize(out, bufsz, x); \
 
 void shimInit() { blsInit(0, MCLBN_FP_UNIT_SIZE); }
 
-void frmapnew(char *s, int slen, char *out) {
+int frmapnew(char *s, int slen, char *out) {
   blsSecretKey x[1];
   blsHashToSecretKey(x, s, slen);
   OUT(SecretKey, x, out);
 }
 
-void fromSecretNew(char *s, int slen, char *out) {
+int fromSecretNew(char *s, int slen, char *out) {
   IN(SecretKey, x, s, slen);
   blsPublicKey gx[1];
   blsGetPublicKey(gx, x);
   OUT(PublicKey, gx, out);
 }
 
-void blsSignatureNew(char *s, int slen, char* m, int mlen, char *out) {
+int blsSignatureNew(char *s, int slen, char* m, int mlen, char *out) {
   IN(SecretKey, x, s, slen);
   blsSignature sig[1];
   blsSign(sig, x, m, mlen);
   OUT(Signature, sig, out);
 }
 
-void shimSign(char *s, int slen, char *m, int mlen, char *out) {
+int shimSign(char *s, int slen, char *m, int mlen, char *out) {
   IN(SecretKey, x, s, slen);
   blsSignature sig[1];
   blsSign(sig, x, m, mlen);
@@ -49,7 +48,7 @@ int shimVerify(char *s, int slen, char *t, int tlen, char *m, int mlen) {
   return blsVerify(hx, gx, m, mlen);
 }
 
-void getPopNew(char* t, int tlen, char *out) {
+int getPopNew(char* t, int tlen, char *out) {
   IN(SecretKey, x, t, tlen);
   blsSignature sig[1];
   blsGetPop(sig, x);
@@ -91,12 +90,12 @@ void dkgFree(struct dkg* r) {
   free(r);
 }
 
-void dkgPublicKeyNew(struct dkg* p, int i, char *out) {
+int dkgPublicKeyNew(struct dkg* p, int i, char *out) {
   assert(0 <= i && i < p->t);
   OUT(PublicKey, p->pk + i, out);
 }
 
-void dkgSecretShareNewWithId(struct dkg* p, int i, char *out) {
+int dkgSecretShareNewWithId(struct dkg* p, int i, char *out) {
   if (!i) {
     fprintf(stderr, "BUG: ID = 0\n");
     exit(1);
@@ -108,7 +107,7 @@ void dkgSecretShareNewWithId(struct dkg* p, int i, char *out) {
   OUT(SecretKey, sh, out);
 }
 
-void dkgSecretShareNew(struct dkg* p, char* s, int slen, char *out) {
+int dkgSecretShareNew(struct dkg* p, char* s, int slen, char *out) {
   blsId id[1];
   blsIdDeserialize(id, s, slen);
   blsSecretKey sh[1];
@@ -116,7 +115,7 @@ void dkgSecretShareNew(struct dkg* p, char* s, int slen, char *out) {
   OUT(SecretKey, sh, out);
 }
 
-void dkgPublicShareNew(void** ptr, int* ptrlen, int t, char *s, int slen, char *out) {
+int dkgPublicShareNew(void** ptr, int* ptrlen, int t, char *s, int slen, char *out) {
   blsPublicKey *pks = malloc(sizeof(blsPublicKey) * t);
   for (int i = 0; i < t; i ++) {
     blsPublicKeyDeserialize(pks + i, ptr[i], ptrlen[i]);
@@ -129,7 +128,7 @@ void dkgPublicShareNew(void** ptr, int* ptrlen, int t, char *s, int slen, char *
   OUT(PublicKey, pk, out);
 }
 
-void dkgGroupPublicKeyNew(struct dkg* p, char *out) {
+int dkgGroupPublicKeyNew(struct dkg* p, char *out) {
   OUT(PublicKey, p->gpk, out);
 }
 
@@ -175,7 +174,7 @@ void signatureShareAdd(struct sigshare *p, char *id, int idlen, char *sig, int s
   p->i++;
 }
 
-void recoverSignatureNew(struct sigshare *p, char *out) {
+int recoverSignatureNew(struct sigshare *p, char *out) {
   if (p->i != p->t) {
     fprintf(stderr, "BUG: too few signature shares\n");
     exit(1);
@@ -185,14 +184,14 @@ void recoverSignatureNew(struct sigshare *p, char *out) {
   OUT(Signature, sig, out);
 }
 
-void secretKeyAdd(char *s, int slen, char *t, int tlen, char *out) {
+int secretKeyAdd(char *s, int slen, char *t, int tlen, char *out) {
   IN(SecretKey, x, s, slen);
   IN(SecretKey, y, t, tlen);
   blsSecretKeyAdd(x, y);
   OUT(SecretKey, x, out);
 }
 
-void publicKeyAdd(char *s, int slen, char *t, int tlen, char *out) {
+int publicKeyAdd(char *s, int slen, char *t, int tlen, char *out) {
   IN(PublicKey, x, s, slen);
   IN(PublicKey, y, t, tlen);
   blsPublicKeyAdd(x, y);

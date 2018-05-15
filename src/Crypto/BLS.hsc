@@ -27,7 +27,7 @@ import Data.Hashable          (Hashable)
 import Data.Binary            (Binary)
 import Data.ByteString.Char8  (ByteString, pack, unpack)
 import Data.ByteString.Unsafe (unsafeUseAsCStringLen)
-import Data.ByteString.Internal (create)
+import Data.ByteString.Internal (createAndTrim)
 import Data.IntMap.Strict     (IntMap, empty, insert, size, traverseWithKey)
 import Data.String            (IsString)
 import Data.Void              (Void)
@@ -43,7 +43,7 @@ import System.IO.Unsafe       (unsafePerformIO)
 
 #include <bindings.dsl.h>
 
-type MkByteString = Ptr Word8 -> IO ()
+type MkByteString = Ptr Word8 -> IO Int
 
 #ccall_unsafe shimInit, IO ()
 #ccall_unsafe shimSign, CString -> CInt -> CString -> CInt -> MkByteString
@@ -108,7 +108,7 @@ instance Binary Signature
 instance Binary MemberId
 
 createAs :: (ByteString -> b) -> MkByteString -> IO b
-createAs f act = f <$> create 64 act
+createAs f act = f <$> createAndTrim 64 act
 
 unsafeAsCStringLen :: ByteString -> ((Ptr CChar, CInt) -> IO a) -> IO a
 unsafeAsCStringLen x f = unsafeUseAsCStringLen x (f . lenToCInt)
@@ -131,7 +131,7 @@ unsafeCIO1 cfunc xxx =
 {-# INLINE unsafeCIO1b #-}
 unsafeCIO1b :: (CString -> CInt -> MkByteString)
            ->   ByteString      -> IO ByteString
-unsafeCIO1b cfunc xxx = create 64 $ \ptr ->
+unsafeCIO1b cfunc xxx = createAndTrim 64 $ \ptr ->
   unsafeAsCStringLen xxx $ \ xxxPtr ->
     uncurry cfunc xxxPtr ptr
 
@@ -146,7 +146,7 @@ unsafeCIO2 cfunc xxx yyy =
 {-# INLINE unsafeCIO2b #-}
 unsafeCIO2b :: (CString -> CInt -> CString -> CInt -> MkByteString)
            ->   ByteString      -> ByteString      -> IO ByteString
-unsafeCIO2b cfunc xxx yyy = create 64 $ \ptr ->
+unsafeCIO2b cfunc xxx yyy = createAndTrim 64 $ \ptr ->
   unsafeAsCStringLen xxx $ \ xxxPtr ->
     unsafeAsCStringLen yyy $ \ yyyPtr ->
       uncurry (uncurry cfunc xxxPtr) yyyPtr ptr
