@@ -63,9 +63,12 @@ testRecoverSig n m = do
           miners' <- shuffleM $ V.toList miners
           let hash = SHA256.hash $ getSignature msg
           let sigs = map (\(nid, _, nsk) -> (nid, sign nsk hash)) miners'
-          let sig = recoverSig sigs
-          if verifySig sig hash gpk then loop (k - 1) sig else
-            error "signature invalid"
+          let sig  = recoverSig $ take t sigs
+          let sig' = recoverSig $ drop (length sigs - t) sigs
+          case (sig == sig', verifySig sig hash gpk) of
+            (True, True) -> loop (k - 1) sig
+            (False, _) -> error "signature mismatch"
+            (_, False) -> error "signature invalid"
   result <- loop m (Signature $ pack "test")
   return $ TestCase $ assertEqual (show result) True True
 
